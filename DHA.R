@@ -17,7 +17,7 @@
 ### INITIALIZE R SESSION ###
 ############################
 
-# Clean the session
+# Clean R session
 rm(list=ls(all=TRUE))
 
 # Load required libraries
@@ -46,16 +46,18 @@ setwd(file.path(getwd(), "iJO1366"))
 #       model_ecoli <- readSBMLmod("iJO1366.xml")
 #
 #   # load modelorg object from an RData file:
-#       load(file="iJO1366.RData")
+#       load(file = "iJO1366.RData")
 #
 #   # read TSV model (see sybil documentation for details):
 model_ecoli <- readTSVmod(prefix = "iJO1366", quoteChar = "\"")
 
 # Constrain uptake fluxes (DHA, formate, acetate and glycolate) to experimental values (in mmol/gDW/h, as detailed in Peiro et al., 2019)
+# GLYCDx changed from irreversible to reversible
+# G3PD2 operates in the reverse direction (DHAP -> GLY3P)
 model_ecoli <- changeBounds(model_ecoli,
-                            c("EX_dha(e)", "EX_glc(e)", "EX_for(e)", "EX_glyclt(e)", "EX_ac(e)"),
-                            lb = c(-5.2, 0, -3.21, -1.02, -0.07),
-                            ub = c(-5.2, 0, -3.21, -1.02, -0.07))
+                            c("EX_dha(e)", "EX_glc(e)", "EX_for(e)", "EX_glyclt(e)", "EX_ac(e)", "GLYCDx", "G3PD2"),
+                            lb = c(-5.2, 0, -3.21, -1.02, -0.07, -1000, -1000),
+                            ub = c(-5.2, 0, -3.21, -1.02, -0.07, 1000, 0))
 
 
 ######################
@@ -63,18 +65,19 @@ model_ecoli <- changeBounds(model_ecoli,
 ######################
 
 # List of reactions of interest (as shown in Figure 2 in Peiro et al., 2019)
-react <- c("DHAtex", "Ec_biomass_iJO1366_core_53p95M","DHAPT","GLYCDx", "GLYK", "G3PD5","G3PD2","F6PA" ,"PFK","FBA","TPI","GAPD")
+react <- c("DHAtex", "DHAPT", "GLYCDx", "GLYK", "G3PD5", "G3PD2", "F6PA" , "PFK", "FBA", "TPI", "GAPD", "Ec_biomass_iJO1366_core_53p95M")
 
-# Get optimal flux distribution and perform flux variability analysis
+# Flux balance analysis to estimate optimal fluxes,
+# with growth define as objective function and minimization of total flux
 fba <- optimizeProb(model_ecoli, algorithm = "mtf")
-fba_flx <- getFluxDist(fba, react=checkReactId(model_ecoli, react)@react_pos)
+fba_flx <- getFluxDist(fba, react = checkReactId(model_ecoli, react)@react_pos)
 
-# Perform flux variability analysis (with growth > 95% of optimal growth rate)
+# Flux variability analysis (with growth > 95% of optimal growth rate) to estimate min and max fluxes
 fva <- fluxVar(model = model_ecoli, react = react, percentage = 95, verboseMode = 0)
 fva_flx <- mod_obj(fva)
 
 # Gather results
-res_abs <- matrix(c(fva_flx, fba_flx), ncol=3, nrow=length(react), dimnames=list(reaction=react, flux=c("min", "max", "opt")))
+res_abs <- matrix(c(fva_flx, fba_flx), ncol = 3, nrow = length(react), dimnames = list(reaction=react, flux=c("min", "max", "opt")))
 res_rel <- res_abs/5.2
 
 # Display intracellular fluxes (min, max, opt) relative to DHA uptake
